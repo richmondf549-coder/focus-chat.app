@@ -7,69 +7,91 @@ const focusToggle = document.getElementById("focusToggle");
 let focusMode = false;
 let cooldown = false;
 
-/* ===== ENCRYPTION ===== */
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-let key;
+/* ===== SIMPLE STORAGE (NO BREAKAGE) ===== */
+let messages = JSON.parse(localStorage.getItem("focusChat")) || [];
 
-(async () => {
-  key = await crypto.subtle.generateKey(
-      { name: "AES-GCM", length: 256 },
-          true,
-              ["encrypt", "decrypt"]
-                );
-                })();
+/* LOAD OLD MESSAGES */
+messages.forEach(m => renderMessage(m.text, m.type));
 
-                async function encrypt(text) {
-                  const iv = crypto.getRandomValues(new Uint8Array(12));
-                    const data = await crypto.subtle.encrypt(
-                        { name: "AES-GCM", iv },
-                            key,
-                                encoder.encode(text)
-                                  );
-                                    return { iv: [...iv], data: [...new Uint8Array(data)] };
-                                    }
+function renderMessage(text, type) {
+  const msg = document.createElement("div");
+  msg.className = `msg ${type}`;
+  msg.textContent = text;
+  chat.appendChild(msg);
+}
 
-                                    async function decrypt(payload) {
-                                      const iv = new Uint8Array(payload.iv);
-                                        const data = new Uint8Array(payload.data);
-                                          const decrypted = await crypto.subtle.decrypt(
-                                              { name: "AES-GCM", iv },
-                                                  key,
-                                                      data
-                                                        );
-                                                          return decoder.decode(decrypted);
-                                                          }
+/* ADD MESSAGE */
+function addMessage(text, type) {
+  renderMessage(text, type);
 
-                                                          /* ===== CHAT ===== */
-                                                          async function addMessage(text, type) {
-                                                            const encrypted = await encrypt(text);
-                                                              const decrypted = await decrypt(encrypted);
+  messages.push({ text, type });
+  localStorage.setItem("focusChat", JSON.stringify(messages));
 
-                                                                const msg = document.createElement("div");
-                                                                  msg.className = `msg ${type}`;
-                                                                    msg.textContent = decrypted;
-                                                                      chat.appendChild(msg);
-                                                                        chat.scrollTop = chat.scrollHeight;
-                                                                        }
+  chat.scrollTop = chat.scrollHeight;
+}
 
-                                                                        send.onclick = async () => {
-                                                                          if (!input.value || cooldown) return;
+/* SEND */
+send.onclick = () => {
+  if (!input.value || cooldown) return;
 
-                                                                            if (focusMode) {
-                                                                                cooldown = true;
-                                                                                    setTimeout(() => cooldown = false, 3000);
-                                                                                      }
+  if (focusMode) {
+    cooldown = true;
+    setTimeout(() => cooldown = false, 3000);
+  }
 
-                                                                                        await addMessage(input.value, "sent");
-                                                                                          input.value = "";
-                                                                                          };
+  addMessage(input.value, "sent");
+  input.value = "";
+};
 
-                                                                                          /* ===== FOCUS MODE ===== */
-                                                                                          focusToggle.onclick = () => {
-                                                                                            focusMode = !focusMode;
-                                                                                              focusToggle.textContent = focusMode ? "🧘 ON" : "🧘";
-                                                                                              };
+/* ENTER KEY */
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") send.click();
+});
+
+/* ===== FOCUS MODE ===== */
+focusToggle.onclick = () => {
+  focusMode = !focusMode;
+  focusToggle.textContent = focusMode ? "🧘 ON" : "🧘";
+};
+
+/* ===== VOICE NOTES FIXED ===== */
+let recorder, chunks = [];
+
+recordBtn.onclick = async () => {
+  try {
+    if (!recorder) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = e => chunks.push(e.data);
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        chunks = [];
+
+        const audio = document.createElement("audio");
+        audio.controls = true;
+        audio.src = URL.createObjectURL(blob);
+
+        const msg = document.createElement("div");
+        msg.className = "msg sent";
+        msg.appendChild(audio);
+
+        chat.appendChild(msg);
+        chat.scrollTop = chat.scrollHeight;
+      };
+
+      recorder.start();
+      recordBtn.textContent = "⏹️";
+    } else {
+      recorder.stop();
+      recorder = null;
+      recordBtn.textContent = "🎙️";
+    }
+  } catch (err) {
+    alert("Microphone permission denied or not supported.");
+  }
+};                                                                                              };
 
                                                                                               /* ===== VOICE NOTES ===== */
                                                                                               let recorder, chunks = [];
